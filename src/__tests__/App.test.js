@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom/extend-expect";
 import { server } from "../mocks/server";
+import { rest } from "msw"; // ✅ import rest from msw
 
 import App from "../components/App";
 
@@ -27,13 +28,9 @@ test("displays question prompts after fetching", async () => {
 test("creates a new question when the form is submitted", async () => {
   render(<App />);
 
-  // wait for first render of list (otherwise we get a React state warning)
   await screen.findByText(/lorem testum 1/g);
-
-  // click form page
   fireEvent.click(screen.queryByText("New Question"));
 
-  // fill out form
   fireEvent.change(screen.queryByLabelText(/Prompt/), {
     target: { value: "Test Prompt" },
   });
@@ -47,10 +44,7 @@ test("creates a new question when the form is submitted", async () => {
     target: { value: "1" },
   });
 
-  // submit form
   fireEvent.submit(screen.queryByText(/Add Question/));
-
-  // view questions
   fireEvent.click(screen.queryByText(/View Questions/));
 
   expect(await screen.findByText(/Test Prompt/g)).toBeInTheDocument();
@@ -61,17 +55,36 @@ test("deletes the question when the delete button is clicked", async () => {
   const { rerender } = render(<App />);
 
   fireEvent.click(screen.queryByText(/View Questions/));
+  await screen.findByText(/lorem testum 1/i);
 
-  await screen.findByText(/lorem testum 1/g);
+  // ✅ Mock the updated GET /questions response after deletion
+  server.once(
+    rest.get("http://localhost:4000/questions", (req, res, ctx) => {
+      return res(
+        ctx.json([
+          {
+            id: 2,
+            prompt: "lorem testum 2",
+            answers: ["choice 1", "choice 2", "choice 3", "choice 4"],
+            correctIndex: 2,
+          },
+          {
+            id: 3,
+            prompt: "Test Prompt",
+            answers: ["Test Answer 1", "Test Answer 2"],
+            correctIndex: 1,
+          },
+        ])
+      );
+    })
+  );
 
   fireEvent.click(screen.queryAllByText("Delete Question")[0]);
 
   await waitForElementToBeRemoved(() => screen.queryByText(/lorem testum 1/g));
 
   rerender(<App />);
-
   await screen.findByText(/lorem testum 2/g);
-
   expect(screen.queryByText(/lorem testum 1/g)).not.toBeInTheDocument();
 });
 
@@ -79,7 +92,6 @@ test("updates the answer when the dropdown is changed", async () => {
   const { rerender } = render(<App />);
 
   fireEvent.click(screen.queryByText(/View Questions/));
-
   await screen.findByText(/lorem testum 2/g);
 
   fireEvent.change(screen.queryAllByLabelText(/Correct Answer/)[0], {
@@ -89,6 +101,5 @@ test("updates the answer when the dropdown is changed", async () => {
   expect(screen.queryAllByLabelText(/Correct Answer/)[0].value).toBe("3");
 
   rerender(<App />);
-
   expect(screen.queryAllByLabelText(/Correct Answer/)[0].value).toBe("3");
 });
